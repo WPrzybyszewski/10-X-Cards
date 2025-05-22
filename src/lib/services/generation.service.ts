@@ -70,4 +70,74 @@ export class GenerationService {
     console.error('Generation error', { generationId, error });
     return;
   }
+
+  /**
+   * Pobiera listę zadań generacji dla użytkownika z paginacją.
+   * @throws {Error} Gdy wystąpi błąd podczas pobierania danych
+   */
+  static async getList(userId: string, params: PaginationParams): Promise<GenerationListResult> {
+    try {
+      // TODO: Integracja z Supabase - przykład implementacji:
+      // const { data, error, count } = await supabase
+      //   .from('generations')
+      //   .select('*', { count: 'exact' })
+      //   .eq('user_id', userId)
+      //   .order('created_at', { ascending: false })
+      //   .range(
+      //     (params.page - 1) * params.limit,
+      //     params.page * params.limit - 1
+      //   );
+      // if (error) throw new Error(error.message);
+      // 
+      // return {
+      //   data: data.map(row => ({
+      //     id: row.id,
+      //     status: row.status,
+      //     createdAt: row.created_at,
+      //     modelUsed: row.model_used,
+      //     progress: row.progress
+      //   })),
+      //   pagination: {
+      //     page: params.page,
+      //     limit: params.limit,
+      //     totalItems: count || 0,
+      //     totalPages: Math.ceil((count || 0) / params.limit)
+      //   }
+      // };
+
+      // Mock data dla rozwoju
+      const mockData: GenerationTaskVM[] = [
+        {
+          id: '11111111-1111-1111-1111-111111111111',
+          status: 'completed',
+          createdAt: new Date().toISOString(),
+          modelUsed: 'openrouter/opus-mixtral-8x22b',
+          progress: 100,
+        },
+        {
+          id: '22222222-2222-2222-2222-222222222222',
+          status: 'processing',
+          createdAt: new Date().toISOString(),
+          modelUsed: 'openrouter/opus-mixtral-8x22b',
+          progress: 45,
+        },
+      ];
+
+      const totalItems = mockData.length;
+      const totalPages = Math.ceil(totalItems / params.limit);
+
+      return {
+        data: mockData.slice((params.page - 1) * params.limit, params.page * params.limit),
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          totalPages,
+          totalItems,
+        },
+      };
+    } catch (error) {
+      console.error('Error in GenerationService.getList:', error);
+      throw new Error('Failed to fetch generations list');
+    }
+  }
 } 
