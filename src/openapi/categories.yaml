@@ -1,0 +1,128 @@
+openapi: 3.0.0
+info:
+  title: Categories API
+  version: "1.0"
+  description: API do zarządzania kategoriami fiszek
+
+paths:
+  /api/v1/categories:
+    post:
+      summary: Utwórz nową kategorię
+      description: |
+        Tworzy nową kategorię dla zalogowanego użytkownika.
+        Nazwa kategorii musi być unikalna w obrębie konta użytkownika.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: Nazwa kategorii (unikalna per użytkownik)
+                  example: "Programming"
+      responses:
+        "201":
+          description: Kategoria utworzona pomyślnie
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL do utworzonej kategorii
+              example: "/api/v1/categories/123e4567-e89b-12d3-a456-426614174000"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryDTO"
+              example:
+                id: "123e4567-e89b-12d3-a456-426614174000"
+                name: "Programming"
+                createdAt: "2024-03-14T12:00:00Z"
+                updatedAt: "2024-03-14T12:00:00Z"
+        "400":
+          description: Błędne dane wejściowe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                validation-error:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Validation failed"
+                      details:
+                        fieldErrors:
+                          name: ["Category name is required"]
+                invalid-json:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Invalid JSON payload"
+        "409":
+          description: Kategoria o takiej nazwie już istnieje
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "CONFLICT"
+                  message: "Category with this name already exists"
+        "500":
+          description: Błąd serwera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INTERNAL_SERVER_ERROR"
+                  message: "Internal server error"
+
+components:
+  schemas:
+    CategoryDTO:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
