@@ -20,6 +20,30 @@ export interface GenerationRecord {
   modelUsed: string;
 }
 
+import type { FlashcardDTO, GenerationTaskVM } from '../../types';
+import type { AcceptGeneratedCardsCommand, GeneratedFlashcardPreview } from '../validators/generation';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PaginationParams } from "../validators/pagination";
+
+// Stałe dla statusów generacji zgodne z enumem w bazie
+const GENERATION_STATUS = {
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled'
+} as const;
+
+interface GenerationListResult {
+  data: GenerationTaskVM[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalPages: number;
+    totalItems: number;
+  };
+}
+
 /**
  * Serwis do obsługi logiki generations (mock).
  * Wersja produkcyjna: operacje na bazie, kolejce, logach.
@@ -75,69 +99,203 @@ export class GenerationService {
    * Pobiera listę zadań generacji dla użytkownika z paginacją.
    * @throws {Error} Gdy wystąpi błąd podczas pobierania danych
    */
-  static async getList(userId: string, params: PaginationParams): Promise<GenerationListResult> {
+  static async getList(
+    supabase: SupabaseClient,
+    userId: string, 
+    params: PaginationParams
+  ): Promise<GenerationListResult> {
     try {
-      // TODO: Integracja z Supabase - przykład implementacji:
-      // const { data, error, count } = await supabase
-      //   .from('generations')
-      //   .select('*', { count: 'exact' })
-      //   .eq('user_id', userId)
-      //   .order('created_at', { ascending: false })
-      //   .range(
-      //     (params.page - 1) * params.limit,
-      //     params.page * params.limit - 1
-      //   );
-      // if (error) throw new Error(error.message);
-      // 
-      // return {
-      //   data: data.map(row => ({
-      //     id: row.id,
-      //     status: row.status,
-      //     createdAt: row.created_at,
-      //     modelUsed: row.model_used,
-      //     progress: row.progress
-      //   })),
-      //   pagination: {
-      //     page: params.page,
-      //     limit: params.limit,
-      //     totalItems: count || 0,
-      //     totalPages: Math.ceil((count || 0) / params.limit)
-      //   }
-      // };
+      // Pobierz dane z paginacją
+      const { data, error, count } = await supabase
+        .from("generations")
+        .select("*", { count: "exact" })
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(
+          (params.page - 1) * params.limit,
+          params.page * params.limit - 1
+        );
 
-      // Mock data dla rozwoju
-      const mockData: GenerationTaskVM[] = [
-        {
-          id: '11111111-1111-1111-1111-111111111111',
-          status: 'completed',
-          createdAt: new Date().toISOString(),
-          modelUsed: 'openrouter/opus-mixtral-8x22b',
-          progress: 100,
-        },
-        {
-          id: '22222222-2222-2222-2222-222222222222',
-          status: 'processing',
-          createdAt: new Date().toISOString(),
-          modelUsed: 'openrouter/opus-mixtral-8x22b',
-          progress: 45,
-        },
-      ];
+      if (error) {
+        console.error("Error fetching generations:", error);
+        throw new Error("Failed to fetch generations");
+      }
 
-      const totalItems = mockData.length;
-      const totalPages = Math.ceil(totalItems / params.limit);
+      // Mapuj na GenerationTaskVM
+      const generations = (data || []).map(row => ({
+        id: row.id,
+        status: row.status,
+        createdAt: row.created_at,
+        modelUsed: row.model_used,
+        progress: row.progress,
+      }));
 
       return {
-        data: mockData.slice((params.page - 1) * params.limit, params.page * params.limit),
+        data: generations,
         pagination: {
           page: params.page,
           limit: params.limit,
-          totalPages,
-          totalItems,
+          totalItems: count || 0,
+          totalPages: Math.ceil((count || 0) / params.limit),
         },
       };
     } catch (error) {
-      console.error('Error in GenerationService.getList:', error);
-      throw new Error('Failed to fetch generations list');
+      console.error("Error in GenerationService.getList:", error);
+      throw new Error("Failed to fetch generations list");
     }
+  }
+
+  /**
+   * Akceptuje wygenerowane fiszki i zapisuje je w bazie.
+   * @throws {Error} Gdy zadanie nie istnieje lub nie należy do użytkownika
+   * @throws {Error} Gdy zadanie jest już zaakceptowane lub anulowane
+   */
+  static async acceptGeneratedCards(
+    supabase: SupabaseClient,
+    userId: string,
+    generationId: string,
+    data?: AcceptGeneratedCardsCommand
+  ): Promise<FlashcardDTO[]> {
+    console.log("Accepting flashcards for generation:", { generationId, userId });
+
+    // 0. Najpierw sprawdźmy czy generacja w ogóle istnieje (bez filtra na user_id)
+    const { data: allGenerations, error: findAllError } = await supabase
+      .from("generations")
+      .select("id, user_id, status")
+      .eq("id", generationId);
+
+    console.log("All generations with this ID:", allGenerations);
+    
+    if (findAllError) {
+      console.error("Error checking generation existence:", findAllError);
+    }
+
+    // 1. Sprawdź czy zadanie istnieje i należy do użytkownika
+    const { data: generations, error: findError } = await supabase
+      .from("generations")
+      .select("*")
+      .eq("id", generationId)
+      .eq("user_id", userId);
+
+    console.log("Find generation result:", { 
+      generations, 
+      error: findError,
+      searchParams: { generationId, userId }
+    });
+
+    if (findError) {
+      console.error("Error finding generation:", findError);
+      throw new Error("Generation not found");
+    }
+
+    if (!generations || generations.length === 0) {
+      // Sprawdźmy czy to problem z user_id czy z samym ID generacji
+      if (allGenerations && allGenerations.length > 0) {
+        console.error("Generation exists but belongs to different user:", {
+          generationId,
+          requestedUserId: userId,
+          actualUserId: allGenerations[0].user_id
+        });
+      } else {
+        console.error("Generation not found at all:", { generationId });
+      }
+      throw new Error("Generation not found");
+    }
+
+    const generation = generations[0];
+    console.log("Found generation:", {
+      id: generation.id,
+      status: generation.status,
+      userId: generation.user_id
+    });
+
+    // 2. Sprawdź status zadania
+    if ([GENERATION_STATUS.COMPLETED, GENERATION_STATUS.CANCELLED].includes(generation.status)) {
+      throw new Error("Generation already processed");
+    }
+
+    // 3. Pobierz sugerowane fiszki
+    let flashcardsToAccept: GeneratedFlashcardPreview[];
+    if (data?.flashcards) {
+      // Użyj tylko wybranych fiszek
+      flashcardsToAccept = data.flashcards;
+    } else {
+      // Użyj wszystkich sugerowanych fiszek
+      flashcardsToAccept = generation.generated_flashcards || [];
+    }
+
+    if (flashcardsToAccept.length === 0) {
+      throw new Error("No flashcards to accept");
+    }
+
+    // 4. Zapisz fiszki w bazie
+    const { data: createdFlashcards, error: insertError } = await supabase
+      .from("flashcards")
+      .insert(
+        flashcardsToAccept.map(f => ({
+          user_id: userId,
+          question: f.question,
+          answer: f.answer,
+          generation_id: generationId,
+          source: "ai",
+          category_id: generation.category_id,
+        }))
+      )
+      .select();
+
+    if (insertError) {
+      console.error("Error creating flashcards:", insertError);
+      throw new Error("Failed to create flashcards");
+    }
+
+    // 5. Aktualizuj status zadania
+    const { error: updateError } = await supabase
+      .from("generations")
+      .update({
+        status: GENERATION_STATUS.COMPLETED,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", generationId)
+      .eq("user_id", userId);
+
+    if (updateError) {
+      console.error("Error updating generation status:", updateError);
+      throw new Error("Failed to update generation status");
+    }
+
+    // 6. Mapuj na DTO
+    return (createdFlashcards || []).map(f => ({
+      id: f.id,
+      question: f.question,
+      answer: f.answer,
+      categoryId: f.category_id,
+      generationId: f.generation_id,
+      source: f.source,
+      createdAt: f.created_at,
+      updatedAt: f.updated_at,
+    }));
+  }
+
+  /**
+   * Sprawdza szczegóły zadania generacji.
+   * Pomocna metoda do debugowania.
+   */
+  static async getGenerationDetails(
+    supabase: SupabaseClient,
+    generationId: string
+  ): Promise<any> {
+    const { data, error } = await supabase
+      .from("generations")
+      .select("id, user_id, status, created_at, model_used")
+      .eq("id", generationId)
+      .single();
+
+    if (error) {
+      console.error("Error fetching generation details:", error);
+      throw new Error("Failed to fetch generation details");
+    }
+
+    console.log("Generation details:", data);
+    return data;
   }
 } 

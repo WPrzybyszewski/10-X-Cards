@@ -57,6 +57,197 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/generations/{generationId}/accept:
+    post:
+      summary: Akceptuj wygenerowane fiszki
+      description: |
+        Akceptuje wygenerowane fiszki i zapisuje je w bazie danych.
+        Można zaakceptować wszystkie fiszki (pusty payload) lub wybrać konkretne fiszki do zapisania.
+      parameters:
+        - in: path
+          name: generationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID zadania generacji
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flashcards:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - question
+                      - answer
+                    properties:
+                      question:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                        example: "Co to jest TypeScript?"
+                      answer:
+                        type: string
+                        minLength: 1
+                        maxLength: 500
+                        example: "TypeScript to typowany nadzbiór JavaScript, który kompiluje się do czystego JavaScript."
+      responses:
+        "200":
+          description: Fiszki zaakceptowane i zapisane
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FlashcardDTO"
+              example:
+                - id: "123e4567-e89b-12d3-a456-426614174000"
+                  question: "Co to jest TypeScript?"
+                  answer: "TypeScript to typowany nadzbiór JavaScript..."
+                  categoryId: "123e4567-e89b-12d3-a456-426614174000"
+                  generationId: "123e4567-e89b-12d3-a456-426614174000"
+                  source: "ai"
+                  createdAt: "2024-03-14T12:00:00Z"
+                  updatedAt: "2024-03-14T12:00:00Z"
+        "400":
+          description: Błędne dane wejściowe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid-id:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Invalid generation ID format"
+                invalid-flashcards:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Validation failed"
+                      details:
+                        fieldErrors:
+                          "flashcards[0].question": ["String must contain at least 1 character(s)"]
+                no-flashcards:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "No flashcards to accept"
+        "404":
+          description: Zadanie generacji nie znalezione
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "NOT_FOUND"
+                  message: "Generation not found"
+        "409":
+          description: Zadanie już przetworzone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "CONFLICT"
+                  message: "Generation already accepted or cancelled"
+        "500":
+          description: Błąd serwera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INTERNAL_SERVER_ERROR"
+                  message: "Internal server error"
+
+  /api/v1/generations:
+    post:
+      summary: Utwórz nowe zadanie generacji
+      description: |
+        Tworzy nowe zadanie generowania fiszek na podstawie dostarczonego tekstu.
+        Tekst źródłowy musi mieć od 500 do 10000 znaków.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceText
+              properties:
+                sourceText:
+                  type: string
+                  minLength: 500
+                  maxLength: 10000
+                  description: Tekst źródłowy do generowania fiszek
+                  example: "TypeScript is a strongly typed programming language..."
+                model:
+                  type: string
+                  description: Opcjonalny identyfikator modelu AI
+                  example: "openrouter/opus-mixtral-8x22b"
+                categoryId:
+                  type: string
+                  format: uuid
+                  description: Opcjonalne ID kategorii dla wygenerowanych fiszek
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '202':
+          description: Zadanie przyjęte do realizacji
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL do sprawdzenia statusu zadania
+              example: "/api/v1/generations/123e4567-e89b-12d3-a456-426614174000"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationTaskVM'
+        '400':
+          description: Błędne dane wejściowe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation-error:
+                  value:
+                    error:
+                      code: 'VALIDATION_ERROR'
+                      message: 'Validation failed'
+                      details:
+                        fieldErrors:
+                          sourceText: ['String must contain at least 500 character(s)']
+        '404':
+          description: Kategoria nie znaleziona
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: 'NOT_FOUND'
+                  message: 'Category not found'
+        '500':
+          description: Błąd serwera
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: 'INTERNAL_SERVER_ERROR'
+                  message: 'Internal server error'
+
 components:
   schemas:
     GenerationTaskVM:

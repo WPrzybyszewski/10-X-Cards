@@ -4,7 +4,7 @@ import { GenerationService } from '../../../../lib/services/generation.service';
 import { SubmitGenerationCommandSchema } from '../../../../lib/validators/generation';
 
 // Tymczasowy mock użytkownika (do zastąpienia autoryzacją)
-const mockUser = { id: 'mock-user-id', email: 'mock@example.com' };
+const mockUser = { id: 'd5986da6-7831-483d-8728-e3c26592b4a0', email: 'mock@example.com' };
 
 // Tymczasowa mockowa lista kategorii użytkownika
 const mockCategories = [
@@ -20,12 +20,9 @@ const DEFAULT_MODEL = 'openrouter/opus-mixtral-8x22b';
  *
  * Wersja mockowa – bez realnej bazy i autoryzacji.
  */
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, locals }) => {
   try {
-    // 1. (Mock) Autoryzacja
-    // Wersja produkcyjna: pobierz usera z context.locals, sprawdź JWT
-
-    // 2. Walidacja parametrów paginacji
+    // 1. Walidacja parametrów paginacji
     const searchParams = Object.fromEntries(url.searchParams);
     const parseResult = PaginationSchema.safeParse(searchParams);
     if (!parseResult.success) {
@@ -41,15 +38,18 @@ export const GET: APIRoute = async ({ url }) => {
       );
     }
 
-    // 3. Pobranie listy zadań przez serwis
+    // 2. Pobranie listy zadań przez serwis
     try {
-      const result = await GenerationService.getList(mockUser.id, parseResult.data);
+      const result = await GenerationService.getList(
+        locals.supabase,
+        mockUser.id,
+        parseResult.data
+      );
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (err) {
-      // Błąd serwera podczas pobierania danych
       console.error('Error fetching generations:', err);
       return new Response(
         JSON.stringify({
@@ -59,7 +59,6 @@ export const GET: APIRoute = async ({ url }) => {
       );
     }
   } catch (err) {
-    // Nieoczekiwany błąd
     console.error('Unexpected error:', err);
     return new Response(
       JSON.stringify({

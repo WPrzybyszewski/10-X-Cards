@@ -1,0 +1,232 @@
+openapi: 3.0.0
+info:
+  title: Flashcards API
+  version: "1.0"
+  description: API do zarządzania fiszkami
+
+paths:
+  /api/v1/flashcards:
+    post:
+      summary: Utwórz nową fiszkę
+      description: |
+        Tworzy nową fiszkę dla zalogowanego użytkownika.
+        Fiszka jest oznaczana jako utworzona ręcznie (source="manual").
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - question
+                - answer
+              properties:
+                question:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: "What is a closure in JavaScript?"
+                answer:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  example: "A closure is a function that has access to variables in its outer scope."
+                categoryId:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "201":
+          description: Fiszka utworzona pomyślnie
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL do utworzonej fiszki
+              example: "/api/v1/flashcards/123e4567-e89b-12d3-a456-426614174000"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlashcardDTO"
+        "400":
+          description: Błędne dane wejściowe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                validation-error:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Validation failed"
+                      details:
+                        fieldErrors:
+                          question: ["String must contain at least 1 character(s)"]
+                          answer: ["Required"]
+        "404":
+          description: Kategoria nie znaleziona
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "CATEGORY_NOT_FOUND"
+                  message: "Category not found"
+        "500":
+          description: Błąd serwera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INTERNAL_SERVER_ERROR"
+                  message: "Internal server error"
+
+  /api/v1/flashcards/{flashcardId}:
+    patch:
+      summary: Aktualizuj fiszkę
+      description: |
+        Aktualizuje istniejącą fiszkę należącą do użytkownika.
+        Wspiera częściową aktualizację (partial update) - można zaktualizować dowolne z dostępnych pól.
+      parameters:
+        - in: path
+          name: flashcardId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID fiszki do aktualizacji
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                question:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: "Nowe pytanie?"
+                answer:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  example: "Nowa odpowiedź..."
+                categoryId:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Fiszka zaktualizowana pomyślnie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlashcardDTO"
+        "400":
+          description: Błędne dane wejściowe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                validation-error:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Validation failed"
+                      details:
+                        fieldErrors:
+                          question: ["String must contain at least 1 character(s)"]
+                invalid-id:
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Invalid flashcard ID format"
+        "404":
+          description: Fiszka lub kategoria nie znaleziona
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                flashcard-not-found:
+                  value:
+                    error:
+                      code: "NOT_FOUND"
+                      message: "Flashcard not found"
+                category-not-found:
+                  value:
+                    error:
+                      code: "NOT_FOUND"
+                      message: "Category not found"
+        "500":
+          description: Błąd serwera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INTERNAL_SERVER_ERROR"
+                  message: "Internal server error"
+
+components:
+  schemas:
+    FlashcardDTO:
+      type: object
+      required:
+        - id
+        - question
+        - answer
+        - source
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        question:
+          type: string
+        answer:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        generationId:
+          type: string
+          format: uuid
+          nullable: true
+        source:
+          type: string
+          enum: [manual, ai]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
