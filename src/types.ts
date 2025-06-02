@@ -160,6 +160,11 @@ export interface ErrorDTO {
 /*                            FRONTEND VIEW MODELS                            */
 /* -------------------------------------------------------------------------- */
 
+export interface ModelOption {
+  label: string;
+  value: string;
+}
+
 export interface GenerationTaskVM {
   id: string
   status: GenerationStatus
